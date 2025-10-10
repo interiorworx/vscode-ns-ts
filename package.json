@@ -1,0 +1,67 @@
+{
+  "name": "vscode-ns-ts",
+  "displayName": "VSCode NetSuite TypeScript Uploader",
+  "description": "Upload TypeScript files to NetSuite",
+  "version": "1.0.2",
+  "publisher": "interiorworx",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/interiorworx/vscode-ns-ts"
+  },
+  "engines": {
+    "vscode": "^1.84.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "lint": "echo 'No linter configured'"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "@types/vscode": "^1.84.0",
+    "@vscode/vsce": "^3.6.1",
+    "typescript": "^5.4.2"
+  },
+  "contributes": {
+    "configuration": {
+      "title": "NetSuite TypeScript Uploader",
+      "properties": {
+        "vscode-ns-ts.compareAsJs": {
+          "type": "boolean",
+          "default": true,
+          "description": "When comparing a .ts file, transpile to .js and compare the JavaScript output."
+        },
+        "vscode-ns-ts.productionUploadProtection": {
+          "type": "boolean",
+          "default": true,
+          "description": "If enabled, when uploading to a production account: compile TS, open TS↔JS diff, ask for confirmation before upload."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "ns.compareCurrentFileWithAccount",
+        "title": "NetSuite: Compare Current File With Account"
+      },
+      {
+        "command": "ns.compareAndUploadCurrentFileToAccount",
+        "title": "NetSuite: Compare and Upload Current File To Account"
+      },
+      {
+        "command": "ns.uploadCurrentFileToAccount",
+        "title": "NetSuite: Upload Current File To Account"
+      },
+      {
+        "command": "ns.changeAccount",
+        "title": "NetSuite: Change Account"
+      }
+    ]
+  }
+}
