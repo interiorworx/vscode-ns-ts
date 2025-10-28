@@ -66,6 +66,9 @@ export function createTempSdfProject(baseTempDir: string): string {
   const suiteScriptsDir = path.join(fileCabinetDir, 'SuiteScripts');
   if (!fs.existsSync(suiteScriptsDir)) fs.mkdirSync(suiteScriptsDir);
 
+  const objectsDir = path.join(tmpProjectDir, 'Objects');
+  if (!fs.existsSync(objectsDir)) fs.mkdirSync(objectsDir);
+
   return tmpProjectDir;
 }
 
@@ -118,4 +121,76 @@ export async function transpileLocalTsToJs(localTsPath: string): Promise<string>
   }
   out.appendLine(`[transpile] ${path.basename(localTsPath)} -> ${path.basename(jsFilePath)}`);
   return jsFilePath;
+}
+
+export function isObjectXmlFile(localPath: string): boolean {
+  try {
+    const root = findSdfRoot();
+    const objectsDir = path.join(root, 'Objects');
+    if (!fs.existsSync(objectsDir) || !fs.statSync(objectsDir).isDirectory()) return false;
+    if (!localPath.toLowerCase().endsWith('.xml')) return false;
+    return localPath.startsWith(objectsDir + path.sep) || localPath === objectsDir;
+  } catch {
+    return false;
+  }
+}
+
+export function extractScriptIdFromXml(xmlFilePath: string): string {
+  const data = fs.readFileSync(xmlFilePath, 'utf8');
+  // common case: scriptid attribute on the root element
+  const attrMatch = data.match(/\sscriptid\s*=\s*"([^"]+)"/i);
+  if (attrMatch && attrMatch[1]) return attrMatch[1];
+  // fallback: <scriptid>value</scriptid>
+  const elemMatch = data.match(/<\s*scriptid\s*>\s*([^<\s]+)\s*<\s*\/\s*scriptid\s*>/i);
+  if (elemMatch && elemMatch[1]) return elemMatch[1];
+  throw new SuiteCloudError(`Could not determine scriptid from: ${path.basename(xmlFilePath)}`);
+}
+
+export function extractSdfTypeFromXml(xmlFilePath: string): string {
+  const data = fs.readFileSync(xmlFilePath, 'utf8');
+  // remove XML declaration and leading comments/whitespace
+  const cleaned = data.replace(/<\?xml[\s\S]*?\?>/i, '').replace(/<!--([\s\S]*?)-->/g, '').trim();
+  const rootMatch = cleaned.match(/<\s*([A-Za-z0-9_:-]+)\b/);
+  if (!rootMatch) throw new SuiteCloudError(`Could not determine object type from: ${path.basename(xmlFilePath)}`);
+  const qname = rootMatch[1];
+  const localName = qname.includes(':') ? qname.split(':')[1] : qname;
+  return localName.toLowerCase();
+}
+
+export function deriveObjectInfoFromPath(localObjectXmlPath: string): { type: string; scriptId: string; relativePath: string } {
+  const root = findSdfRoot();
+  const objectsDir = path.join(root, 'Objects');
+  if (!localObjectXmlPath.startsWith(objectsDir)) {
+    throw new SuiteCloudError('Object XML must be under the project Objects directory.');
+  }
+  const relativeFromObjects = path.relative(objectsDir, localObjectXmlPath);
+  const type = extractSdfTypeFromXml(localObjectXmlPath);
+  const scriptId = extractScriptIdFromXml(localObjectXmlPath);
+  const relativePath = path.join('Objects', relativeFromObjects);
+  return { type, scriptId, relativePath };
+}
+
+export function copyObjectXmlToProject(tempProjectDir: string, localObjectXmlPath: string): string {
+  const { relativePath } = deriveObjectInfoFromPath(localObjectXmlPath);
+  const destPath = path.join(tempProjectDir, relativePath);
+  const destDir = path.dirname(destPath);
+  if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+  fs.copyFileSync(localObjectXmlPath, destPath);
+  return relativePath; // returned as project-relative path (starts with Objects)
+}
+
+export function writeDeployXmlForObject(projectDir: string, objectRelativePath: string): string {
+  const deployXmlPath = path.join(projectDir, 'deploy.xml');
+  const normalized = objectRelativePath.replace(/\\/g, '/').replace(/^\/?/, '');
+  const deployPath = `~/${normalized}`;
+  const xml = [
+    '<deploy>',
+    '  <objects>',
+    `    <path>${deployPath}</path>`,
+    '  </objects>',
+    '</deploy>',
+    ''
+  ].join('\n');
+  fs.writeFileSync(deployXmlPath, xml, 'utf8');
+  return deployXmlPath;
 }

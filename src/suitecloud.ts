@@ -165,6 +165,49 @@ export async function uploadFilesIn(cwd: string, remotePaths: string[], token?: 
   return runSuiteCloudIn(cwd, args, token);
 }
 
+export interface ImportObjectOptions {
+  type: string;
+  scriptIds?: string[];
+  destinationFolder: string; // must start with /Objects
+  excludeFiles?: boolean;
+  appId?: string;
+}
+
+export async function importObjectIn(cwd: string, options: ImportObjectOptions, token?: vscode.CancellationToken): Promise<SuiteCloudResult> {
+  const args: string[] = ['object:import'];
+  args.push('--type', options.type);
+  if (options.scriptIds && options.scriptIds.length > 0) {
+    args.push('--scriptid', ...options.scriptIds);
+  }
+  args.push('--destinationfolder', options.destinationFolder);
+  if (options.excludeFiles) args.push('--excludefiles');
+  if (options.appId) {
+    args.push('--appid', options.appId);
+  }
+  return runSuiteCloudIn(cwd, args, token);
+}
+
+export interface DeployProjectOptions {
+  dryRun?: boolean;
+  validate?: boolean;
+  logPath?: string;
+}
+
+export async function deployProjectIn(cwd: string, options?: DeployProjectOptions, token?: vscode.CancellationToken): Promise<SuiteCloudResult> {
+  const args: string[] = ['project:deploy'];
+  if (options?.dryRun) args.push('--dryrun');
+  if (options?.validate) args.push('--validate');
+  if (options?.logPath) {
+    args.push('--log', options.logPath);
+  }
+  return runSuiteCloudIn(cwd, args, token);
+}
+
+export async function addProjectDependenciesIn(cwd: string, token?: vscode.CancellationToken): Promise<SuiteCloudResult> {
+  const args: string[] = ['project:adddependencies'];
+  return runSuiteCloudIn(cwd, args, token);
+}
+
 export function getRemotePathForLocal(localFilePath: string): string {
     const root = findSdfRoot();
 
