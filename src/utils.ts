@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getOutputChannel, getRemotePathForLocal, importFilesIn, SuiteCloudError, findSdfRoot } from './suitecloud';
+import { getOutputChannel, SuiteCloudError, findSdfRoot, readProjectDefaultAuthId, isProduction } from './suitecloud';
 import * as os from 'os';
 import { spawn } from 'child_process';
 
@@ -22,26 +22,6 @@ export function getPathForCurrentFile(): string {
     }
 
     return localUri.fsPath;
-}
-
-export async function downloadRemoteToTemp(localFilePath: string, tempProjectDir: string, destFolder: string, options?: { remoteOverridePath?: string; destBaseName?: string }, token?: vscode.CancellationToken): Promise<string> {
-  const out = getOutputChannel();
-  const remotePath = options?.remoteOverridePath ?? getRemotePathForLocal(localFilePath);
-  out.appendLine(`[download] Remote path: ${remotePath}`);
-  if (!fs.existsSync(destFolder)) fs.mkdirSync(destFolder, { recursive: true });
-
-  const base = options?.destBaseName ?? path.basename(remotePath);
-  const downloadedTempPath = path.join(destFolder, base);
-
-  await importFilesIn(tempProjectDir, [remotePath], { excludeProperties: true }, token);
-  const tempFileCandidates = [
-    path.join(tempProjectDir, 'FileCabinet', remotePath.replace(/^\//, '')),
-    path.join(tempProjectDir, remotePath.replace(/^\//, '')),
-  ];
-  const source = tempFileCandidates.find(p => fs.existsSync(p));
-  if (!source) throw new SuiteCloudError(`File does not exist in the account: ${remotePath}`);
-  fs.copyFileSync(source, downloadedTempPath);
-  return downloadedTempPath;
 }
 
 export function createTempSdfProject(baseTempDir: string): string {
@@ -193,4 +173,132 @@ export function writeDeployXmlForObject(projectDir: string, objectRelativePath: 
   ].join('\n');
   fs.writeFileSync(deployXmlPath, xml, 'utf8');
   return deployXmlPath;
+}
+
+export async function showPersistentUploadConfirm(targetLabel: string, files: string[], isProd: boolean): Promise<boolean> {
+    const qp = vscode.window.createQuickPick<vscode.QuickPickItem>();
+    qp.title = `Upload to ${targetLabel}`;
+    qp.placeholder = 'Select an action';
+    qp.matchOnDetail = true;
+    qp.ignoreFocusOut = true;
+    const uploadLabel = isProd ? '$(warning) Upload to PRODUCTION' : '$(cloud-upload) Upload';
+    qp.items = [
+        { label: uploadLabel, detail: files.map(f => `${path.basename(f)}`).join(', ') },
+        { label: '$(x) Cancel', detail: 'Do not upload' }
+    ];
+
+    return new Promise<boolean>((resolve) => {
+        qp.onDidAccept(() => {
+            const picked = qp.selectedItems[0];
+            qp.hide();
+            resolve(!!picked && picked.label.includes('Upload'));
+        });
+        qp.onDidHide(() => {
+            qp.dispose();
+            resolve(false);
+        });
+        qp.show();
+    });
+}
+
+export async function closeCompareDiffTabsFor(localPath: string): Promise<void> {
+    try {
+        const names: string[] = [path.basename(localPath)];
+        if (/\.(ts)$/i.test(localPath)) {
+            names.push(path.basename(localPath).replace(/\.(ts)$/i, '.js'));
+        }
+        const labelMatchers = [
+            (label: string) => /Account\s*[⟷<\->]+\s*Local/i.test(label),
+        ];
+        for (const group of vscode.window.tabGroups.all) {
+            for (const tab of group.tabs) {
+                const label = tab.label || '';
+                const looksLikeCompare = labelMatchers.some(m => m(label));
+                if (!looksLikeCompare) continue;
+                if (names.some(n => label.includes(n))) {
+                    await vscode.window.tabGroups.close(tab);
+                }
+            }
+        }
+    } catch { }
+}
+
+
+export function findMatchingXml(baseDir: string, scriptId: string): string | undefined {
+    const stack: string[] = [baseDir];
+    const lowerScriptId = scriptId.toLowerCase();
+    const candidates: string[] = [];
+    while (stack.length) {
+        const dir = stack.pop()!;
+        if (!fs.existsSync(dir)) continue;
+        for (const entry of fs.readdirSync(dir)) {
+            const p = path.join(dir, entry);
+            const stat = fs.statSync(p);
+            if (stat.isDirectory()) {
+                stack.push(p);
+            } else if (stat.isFile() && /\.xml$/i.test(entry)) {
+                candidates.push(p);
+            }
+        }
+    }
+    const preferred = candidates.find(c => path.basename(c).toLowerCase().includes(lowerScriptId));
+    return preferred || candidates[0];
+}
+
+export function createTempProjectContext(out: vscode.OutputChannel, progress: vscode.Progress<{ message?: string }>, prefix: string): { tmpDir: string; tmpProjectDir: string } {
+    progress.report({ message: 'Creating temporary project...' });
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}-`));
+    out.appendLine(`[${prefix}] Temp dir: ${tmpDir}`);
+    const tmpProjectDir = createTempSdfProject(tmpDir);
+    out.appendLine(`[${prefix}] Temp project: ${tmpProjectDir}`);
+    return { tmpDir, tmpProjectDir };
+}
+
+export async function openDiff(leftPath: string, rightPath: string, title: string): Promise<void> {
+    const left = vscode.Uri.file(leftPath).with({ scheme: 'file' });
+    const right = vscode.Uri.file(rightPath).with({ scheme: 'file' });
+    await vscode.commands.executeCommand('vscode.diff', left, right, title);
+}
+
+export function getProtectionContext(): { current?: string; isProdAccount: boolean; protectionEnabled: boolean; targetLabel: string } {
+    const protectionSetting = vscode.workspace.getConfiguration('vscode-ns-ts').get<boolean>('productionUploadProtection', true);
+    const current = readProjectDefaultAuthId();
+    const isProdAccount = current ? isProduction(current) : true;
+    const protectionEnabled = !!protectionSetting && isProdAccount;
+    const targetLabel = current ? (isProdAccount ? `${current} (PRODUCTION)` : `${current} (sandbox)`) : 'unknown account';
+    return { current, isProdAccount, protectionEnabled, targetLabel };
+}
+
+export async function compareAndConfirmIfNeeded(
+    forceConfirm: boolean,
+    compareAction: () => Promise<void>,
+    files: string[],
+    onCancel?: () => Promise<void>
+): Promise<boolean> {
+    const { isProdAccount, protectionEnabled, targetLabel } = getProtectionContext();
+    if (protectionEnabled || forceConfirm) {
+        try {
+            await compareAction();
+        } catch (error) {
+            getOutputChannel().appendLine(`[confirm] Compare failed: ${error}`);
+            vscode.window.showErrorMessage((error as SuiteCloudError).message);
+        }
+        const confirmed = await showPersistentUploadConfirm(targetLabel, files, isProdAccount);
+        if (!confirmed) {
+            if (onCancel) await onCancel();
+            return false;
+        }
+    }
+    return true;
+}
+
+export async function ensureActiveFileSaved(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) return;
+    const doc = editor.document;
+    if (!doc.isDirty) return;
+    const ok = await doc.save();
+    if (!ok) {
+        throw new SuiteCloudError('Please save the current file before running this command.');
+    }
 }

@@ -49,19 +49,27 @@
     "commands": [
       {
         "command": "ns.compareCurrentFileWithAccount",
-        "title": "NetSuite: Compare Current File With Account"
+        "title": "NetSuite: Compare Current File/Object With Account"
       },
       {
         "command": "ns.compareAndUploadCurrentFileToAccount",
-        "title": "NetSuite: Compare and Upload Current File To Account"
+        "title": "NetSuite: Compare and Upload Current File/Object To Account"
       },
       {
         "command": "ns.uploadCurrentFileToAccount",
-        "title": "NetSuite: Upload Current File To Account"
+        "title": "NetSuite: Upload Current File/Object To Account"
       },
       {
         "command": "ns.changeAccount",
         "title": "NetSuite: Change Account"
+      },
+      {
+        "command": "ns.importFromAccount",
+        "title": "NetSuite: Import File or Folder From Account"
+      },
+      {
+        "command": "ns.importObjectsFromAccount",
+        "title": "NetSuite: Import Object(s) From Account"
       }
     ]
   }

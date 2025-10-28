@@ -164,6 +164,40 @@ export async function listFileCabinetPaths(folder: string = '/'): Promise<string
   return Array.from(new Set(paths));
 }
 
+export interface ListedObject {
+  type: string; // normalized SDF type used for import (e.g., 'script')
+  rawType: string; // raw type from CLI output (e.g., 'suitelet')
+  scriptId: string;
+}
+
+export async function listObjects(types?: string[], scriptIdFilter?: string, token?: vscode.CancellationToken): Promise<ListedObject[]> {
+  const args: string[] = ['object:list'];
+  if (types && types.length > 0) {
+    args.push('--type', ...types);
+  }
+  if (scriptIdFilter && scriptIdFilter.trim().length > 0) {
+    args.push('--scriptid', scriptIdFilter.trim());
+  }
+  const result = await runSuiteCloud(args, token);
+  const text = cleanAnsi(`${result.stdout}\n${result.stderr}`);
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+  const entries: ListedObject[] = [];
+  for (const line of lines) {
+    const idx = line.indexOf(':');
+    if (idx <= 0) continue;
+    const rawType = line.slice(0, idx).trim();
+    const scriptId = line.slice(idx + 1).trim();
+    if (!scriptId) continue;
+    const normalized = normalizeObjectType(rawType);
+    entries.push({ type: normalized, rawType, scriptId });
+  }
+  return entries;
+}
+
+function normalizeObjectType(rawType: string): string {
+  return (rawType || '').toLowerCase();
+}
+
 export interface ImportFilesOptions {
   excludeProperties?: boolean;
 }
@@ -244,30 +278,6 @@ export async function addProjectDependenciesIn(cwd: string, token?: vscode.Cance
   return runSuiteCloudIn(cwd, args, token);
 }
 
-export function getRemotePathForLocal(localFilePath: string): string {
-    const root = findSdfRoot();
-
-    const suiteScriptsDir = path.join(root, 'FileCabinet', 'SuiteScripts');
-    log(`[mapping] SuiteScripts dir: ${suiteScriptsDir}`);
-    if (!fs.existsSync(suiteScriptsDir) || !fs.statSync(suiteScriptsDir).isDirectory()) {
-        throw new SuiteCloudError('SuiteScripts folder not found at project root.');
-    }
-    
-    if (!localFilePath.startsWith(suiteScriptsDir)) {
-        throw new SuiteCloudError('This command only supports files inside the SuiteScripts folder at the project root.');
-    }
-
-    const relative = path.relative(suiteScriptsDir, localFilePath);
-    const remote = `/SuiteScripts/${relative.split(path.sep).join('/')}`;
-    log(`[mapping] Local -> Remote: ${localFilePath} -> ${remote}`);
-    return remote;
-}
-
-export function getLocalPathForRemote(remotePath: string): string {
-  const root = findSdfRoot();
-  const normalized = remotePath.replace(/^\/+/, '');
-  return path.join(root, 'FileCabinet', normalized);
-}
 
 export interface AuthAccount {
   authId: string;

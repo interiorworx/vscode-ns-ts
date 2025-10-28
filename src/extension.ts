@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
-import { compareCurrentFileWithAccount, changeAccount, uploadCurrentFile, compareAndUploadCurrentFile, importFromAccount } from './commands';
-import { isProduction, listAuthAccounts, readProjectDefaultAuthId, findSdfRoot } from './suitecloud';
+import { isProduction, readProjectDefaultAuthId, findSdfRoot } from './suitecloud';
+import { compareCurrentFileWithAccount, uploadCurrentFile, compareAndUploadCurrentFile, changeAccount } from './commands/index';
+import { importFromAccount } from './commands/file-import';
+import { importObjectsFromAccount } from './commands/object-import';
 
 let accountItem: vscode.StatusBarItem | undefined;
 let projectWatcher: vscode.FileSystemWatcher | undefined;
@@ -72,6 +74,14 @@ export function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(importCmd);
 
+  const importObjCmd = vscode.commands.registerCommand('ns.importObjectsFromAccount', async () => {
+    await runCommand(async (progress, token) => {
+      await importObjectsFromAccount(progress, token);
+    }, 'Import objects failed');
+  });
+
+  context.subscriptions.push(importObjCmd);
+
   const changeAccountCmd = vscode.commands.registerCommand('ns.changeAccount', async () => {
     await runCommand(async (progress, token) => {
       await changeAccount(progress, token);
@@ -96,7 +106,7 @@ export function activate(context: vscode.ExtensionContext) {
   }));
 }
 
-async function runCommand(cmd: (progress: vscode.Progress<{ message?: string }>, token: vscode.CancellationToken) => Promise<void>, errorMessage?: string) {
+async function runCommand(cmd: (progress: vscode.Progress<{ message?: string; increment?: number }>, token: vscode.CancellationToken) => Promise<void>, errorMessage?: string) {
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
