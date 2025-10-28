@@ -269,6 +269,13 @@ export async function importObjectsFromAccount(progress: vscode.Progress<{ messa
                 ensureTypeFolderExists(picked.typeId);
                 await importObjectIn(findSdfRoot(), { type: picked.typeId, scriptIds: [picked.scriptId], destinationFolder: `/Objects/${picked.typeId}`, excludeFiles: true }, token);
                 normalizeImportedObjectFilenames(picked.typeId, [picked.scriptId]);
+                // Open the downloaded object file in the editor
+                try {
+                    const root = path.resolve(findSdfRoot());
+                    const localPath = path.join(root, 'Objects', picked.typeId, `${picked.scriptId}.xml`);
+                    const doc = await vscode.workspace.openTextDocument(localPath);
+                    await vscode.window.showTextDocument(doc, { preview: true });
+                } catch { }
                 vscode.window.showInformationMessage(`Imported object: ${picked.scriptId}`);
                 qp.hide();
             } catch (e: any) {

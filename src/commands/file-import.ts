@@ -161,6 +161,12 @@ export async function importFromAccount(progress: vscode.Progress<{ message?: st
 
                 progress.report({ message: `Importing ${remote}...` });
                 await importFiles([remote], { excludeProperties: true }, token);
+                // Open the downloaded file in the editor
+                try {
+                    const localPath = getLocalPathForRemote(remote);
+                    const doc = await vscode.workspace.openTextDocument(localPath);
+                    await vscode.window.showTextDocument(doc, { preview: true });
+                } catch { }
                 vscode.window.showInformationMessage(`Imported: ${remote}`);
                 qp.hide();
             } catch (e: any) {
