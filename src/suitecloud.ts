@@ -29,34 +29,52 @@ function log(message: string): void {
 }
 
 export function findSdfRoot(): string {
-    var currentlyOpenTabfilePath = vscode.window.activeTextEditor?.document.fileName;
-    if (!currentlyOpenTabfilePath) {
-    log('[root] No active editor');
-      throw new Error('No active editor');
+  const tryFolder = (folder: vscode.WorkspaceFolder): string | undefined => {
+    const dir = path.resolve(folder.uri.fsPath);
+    log(`[root] Searching for manifest starting at: ${dir}`);
+    const manifestPaths = [
+      path.join(dir, 'manifest.xml'),
+      path.join(dir, 'src', 'manifest.xml'),
+    ];
+    for (const manifestPath of manifestPaths) {
+      log(`[root] Checking: ${manifestPath}`);
+      if (fs.existsSync(manifestPath)) {
+        log(`[root] Found manifest in: ${manifestPath}`);
+        return path.dirname(manifestPath);
+      }
     }
+    return undefined;
+  };
 
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(currentlyOpenTabfilePath));
-    if (!workspaceFolder) {
-    log('[root] No workspace folder for active file');
-      throw new Error('Open a workspace containing your SuiteCloud project.');
-    }
+  const folders = vscode.workspace.workspaceFolders;
 
-  let dir = path.resolve(workspaceFolder.uri.fsPath);
-  log(`[root] Searching for manifest starting at: ${dir}`);
-  const manifestPaths = [
-    path.join(dir, 'manifest.xml'),
-    path.join(dir, 'src', 'manifest.xml'),
-  ];
-  for (const manifestPath of manifestPaths) {
-    log(`[root] Checking: ${manifestPath}`);
-    if (fs.existsSync(manifestPath)) {
-      log(`[root] Found manifest in: ${manifestPath}`);
-      return path.dirname(manifestPath);
+  if (!folders || folders.length === 0) {
+    log('[root] No workspace folders open');
+    throw new SuiteCloudError('Open a workspace containing your SuiteCloud project.');
+  }
+
+  // If only one workspace folder, always use that
+  if (folders.length === 1) {
+    const only = tryFolder(folders[0]);
+    if (only) return only;
+    log('[root] manifest.xml not found in the only workspace folder');
+    throw new SuiteCloudError('Could not locate SuiteCloud project (manifest.xml not found).');
+  }
+
+  // Multiple folders: use the one for the current file (or none)
+  const activePath = vscode.window.activeTextEditor?.document.fileName;
+  if (activePath) {
+    const activeFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(activePath));
+    if (activeFolder) {
+      const fromActive = tryFolder(activeFolder);
+      if (fromActive) return fromActive;
+      log('[root] Active workspace folder does not contain a SuiteCloud manifest');
+      throw new SuiteCloudError('Could not locate SuiteCloud project in the active workspace folder.');
     }
   }
 
-  log('[root] manifest.xml not found');
-  throw new SuiteCloudError('Could not locate SuiteCloud project (manifest.xml not found).');
+  log('[root] Multiple workspace folders and no active file to select a folder');
+  throw new SuiteCloudError('No active file to determine SuiteCloud project in multi-root workspace.');
 }
 
 export async function runSuiteCloud(args: string[], token?: vscode.CancellationToken): Promise<SuiteCloudResult> {

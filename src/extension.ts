@@ -82,6 +82,10 @@ export function activate(context: vscode.ExtensionContext) {
     refreshAccountStatusBar();
     ensureProjectWatcher(context);
   }));
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
+    refreshAccountStatusBar();
+    ensureProjectWatcher(context);
+  }));
 }
 
 async function runCommand(cmd: (progress: vscode.Progress<{ message?: string }>, token: vscode.CancellationToken) => Promise<void>, errorMessage?: string) {
