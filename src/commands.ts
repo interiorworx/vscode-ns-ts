@@ -5,7 +5,7 @@ import * as os from 'os';
 import { createTempSdfProject, downloadRemoteToTemp, getPathForCurrentFile, transpileLocalTsToJs } from './utils';
 import { getOutputChannel, listAuthAccounts, readProjectDefaultAuthId, setProjectDefaultAuthId, isProduction, getRemotePathForLocal, uploadFiles, SuiteCloudError } from './suitecloud';
 
-export async function compareCurrentFileWithAccount(progress: vscode.Progress<{ message?: string }>, compile: boolean = true) {
+export async function compareCurrentFileWithAccount(progress: vscode.Progress<{ message?: string }>, token: vscode.CancellationToken, compile: boolean = true) {
     const out = getOutputChannel();
     progress.report({ message: 'Creating temporary project...' });
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ns-compare-'));
@@ -30,7 +30,7 @@ export async function compareCurrentFileWithAccount(progress: vscode.Progress<{ 
         const downloadedJsPath = await downloadRemoteToTemp(localPath, tmpProjectDir, tmpDir, {
             remoteOverridePath: remoteJsPath,
             destBaseName: path.basename(localJsPath),
-        });
+        }, token);
 
         progress.report({ message: 'Opening JS diff...' });
         const left = vscode.Uri.file(downloadedJsPath).with({ scheme: 'file' });
@@ -39,7 +39,7 @@ export async function compareCurrentFileWithAccount(progress: vscode.Progress<{ 
         await vscode.commands.executeCommand('vscode.diff', left, right, title);
     } else {
         progress.report({ message: 'Importing file from account...' });
-        const downloadedPath = await downloadRemoteToTemp(localPath, tmpProjectDir, tmpDir);
+        const downloadedPath = await downloadRemoteToTemp(localPath, tmpProjectDir, tmpDir, undefined, token);
 
         progress.report({ message: 'Opening diff...' });
         const left = vscode.Uri.file(downloadedPath).with({ scheme: 'file' });
@@ -49,7 +49,7 @@ export async function compareCurrentFileWithAccount(progress: vscode.Progress<{ 
     }
 }
 
-export async function changeAccount(progress: vscode.Progress<{ message?: string }>) {
+export async function changeAccount(progress: vscode.Progress<{ message?: string }>, _token: vscode.CancellationToken) {
     const out = getOutputChannel();
     progress.report({ message: 'Retrieving SuiteCloud accounts...' });
     const accounts = await listAuthAccounts();
@@ -76,7 +76,7 @@ export async function changeAccount(progress: vscode.Progress<{ message?: string
     vscode.window.showInformationMessage(`NetSuite account set to ${picked.label}`);
 }
 
-export async function uploadCurrentFile(progress: vscode.Progress<{ message?: string }>, confirm: boolean = false) {
+export async function uploadCurrentFile(progress: vscode.Progress<{ message?: string }>, token: vscode.CancellationToken, confirm: boolean = false) {
     const out = getOutputChannel();
     const localPath = getPathForCurrentFile();
     const isTs = /\.(ts)$/i.test(localPath);
@@ -103,7 +103,7 @@ export async function uploadCurrentFile(progress: vscode.Progress<{ message?: st
     if (protectionEnabled || confirm) {
         // Step 2: compare js/ts (open a diff to review)
         try {
-            await compareCurrentFileWithAccount(progress, false);
+            await compareCurrentFileWithAccount(progress, token, false);
         } catch (error) {
             out.appendLine(`[upload] Error comparing file with account: ${error}`);
             vscode.window.showErrorMessage((error as SuiteCloudError).message);
@@ -132,7 +132,7 @@ export async function uploadCurrentFile(progress: vscode.Progress<{ message?: st
 
     progress.report({ message: `Uploading ${remotePaths.length} file(s) to account...` });
     out.appendLine(`[upload] Paths: ${remotePaths.join(', ')}`);
-    await uploadFiles(remotePaths);
+    await uploadFiles(remotePaths, token);
     vscode.window.showInformationMessage('Upload complete.');
     await closeCompareDiffTabsFor(localPath);
 }
@@ -185,6 +185,6 @@ async function closeCompareDiffTabsFor(localPath: string): Promise<void> {
     } catch {}
 }
 
-export async function compareAndUploadCurrentFile(progress: vscode.Progress<{ message?: string }>) {
-    await uploadCurrentFile(progress, true);
+export async function compareAndUploadCurrentFile(progress: vscode.Progress<{ message?: string }>, token: vscode.CancellationToken) {
+    await uploadCurrentFile(progress, token, true);
 }

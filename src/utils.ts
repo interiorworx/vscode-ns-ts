@@ -24,7 +24,7 @@ export function getPathForCurrentFile(): string {
     return localUri.fsPath;
 }
 
-export async function downloadRemoteToTemp(localFilePath: string, tempProjectDir: string, destFolder: string, options?: { remoteOverridePath?: string; destBaseName?: string }): Promise<string> {
+export async function downloadRemoteToTemp(localFilePath: string, tempProjectDir: string, destFolder: string, options?: { remoteOverridePath?: string; destBaseName?: string }, token?: vscode.CancellationToken): Promise<string> {
   const out = getOutputChannel();
   const remotePath = options?.remoteOverridePath ?? getRemotePathForLocal(localFilePath);
   out.appendLine(`[download] Remote path: ${remotePath}`);
@@ -33,7 +33,7 @@ export async function downloadRemoteToTemp(localFilePath: string, tempProjectDir
   const base = options?.destBaseName ?? path.basename(remotePath);
   const downloadedTempPath = path.join(destFolder, base);
 
-  await importFilesIn(tempProjectDir, [remotePath], { excludeProperties: true });
+  await importFilesIn(tempProjectDir, [remotePath], { excludeProperties: true }, token);
   const tempFileCandidates = [
     path.join(tempProjectDir, 'FileCabinet', remotePath.replace(/^\//, '')),
     path.join(tempProjectDir, remotePath.replace(/^\//, '')),

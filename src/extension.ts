@@ -41,32 +41,32 @@ function ensureProjectWatcher(context: vscode.ExtensionContext) {
 
 export function activate(context: vscode.ExtensionContext) {
   const compareCmd = vscode.commands.registerCommand('ns.compareCurrentFileWithAccount', async () => {
-    await runCommand(async (progress) => {
-      await compareCurrentFileWithAccount(progress);
+    await runCommand(async (progress, token) => {
+      await compareCurrentFileWithAccount(progress, token);
     }, 'Compare failed');
   });
 
   context.subscriptions.push(compareCmd);
 
   const uploadCmd = vscode.commands.registerCommand('ns.uploadCurrentFileToAccount', async () => {
-    await runCommand(async (progress) => {
-      await uploadCurrentFile(progress);
+    await runCommand(async (progress, token) => {
+      await uploadCurrentFile(progress, token);
     }, 'Upload failed');
   });
 
   context.subscriptions.push(uploadCmd);
 
   const compareUploadCmd = vscode.commands.registerCommand('ns.compareAndUploadCurrentFileToAccount', async () => {
-    await runCommand(async (progress) => {
-      await compareAndUploadCurrentFile(progress);
+    await runCommand(async (progress, token) => {
+      await compareAndUploadCurrentFile(progress, token);
     }, 'Compare & Upload failed');
   });
 
   context.subscriptions.push(compareUploadCmd);
 
   const changeAccountCmd = vscode.commands.registerCommand('ns.changeAccount', async () => {
-    await runCommand(async (progress) => {
-      await changeAccount(progress);
+    await runCommand(async (progress, token) => {
+      await changeAccount(progress, token);
     }, 'Change account failed');
     await refreshAccountStatusBar();
   });
@@ -84,16 +84,21 @@ export function activate(context: vscode.ExtensionContext) {
   }));
 }
 
-async function runCommand(cmd: (progress: vscode.Progress<{ message?: string }>) => Promise<void>, errorMessage?: string) {
+async function runCommand(cmd: (progress: vscode.Progress<{ message?: string }>, token: vscode.CancellationToken) => Promise<void>, errorMessage?: string) {
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
       title: "NetSuite",
+      cancellable: true,
     },
-    async (progress) => {
+    async (progress, token) => {
       try {
-        await cmd(progress);
+        await cmd(progress, token);
       } catch (e: any) {
+        // Swallow cancellations quietly
+        if (token.isCancellationRequested || (e && (e.name === 'Canceled' || e.constructor?.name === 'CancellationError'))) {
+          return;
+        }
         const msg = e instanceof Error ? e.message : String(e);
         vscode.window.showErrorMessage(`${errorMessage}: ${msg}`);
         return;

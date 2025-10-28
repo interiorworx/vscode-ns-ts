@@ -59,14 +59,14 @@ export function findSdfRoot(): string {
   throw new SuiteCloudError('Could not locate SuiteCloud project (manifest.xml not found).');
 }
 
-export async function runSuiteCloud(args: string[]): Promise<SuiteCloudResult> {
+export async function runSuiteCloud(args: string[], token?: vscode.CancellationToken): Promise<SuiteCloudResult> {
   const cwd = findSdfRoot();
-  return runSuiteCloudIn(cwd, args);
+  return runSuiteCloudIn(cwd, args, token);
 }
 
 // Removed: getProjectRoot, getManifestPath — callers should use findSdfRoot()
 
-export async function runSuiteCloudIn(cwd: string, args: string[]): Promise<SuiteCloudResult> {
+export async function runSuiteCloudIn(cwd: string, args: string[], token?: vscode.CancellationToken): Promise<SuiteCloudResult> {
   log(`[suitecloud] (custom cwd) Running: suitecloud ${args.join(' ')} (cwd: ${cwd})`);
   return new Promise((resolve, reject) => {
     const child = spawn('suitecloud', args, {
@@ -77,6 +77,7 @@ export async function runSuiteCloudIn(cwd: string, args: string[]): Promise<Suit
 
     let stdout = '';
     let stderr = '';
+    let cancelled = false;
 
     child.stdout.on('data', (d) => { stdout += d.toString(); });
     child.stderr.on('data', (d) => { stderr += d.toString(); });
@@ -84,10 +85,25 @@ export async function runSuiteCloudIn(cwd: string, args: string[]): Promise<Suit
       log(`[suitecloud] (custom cwd) Failed to start: ${err.message}`);
       reject(new SuiteCloudError(`Failed to run suitecloud: ${err.message}`));
     });
+    if (token) {
+      token.onCancellationRequested(() => {
+        cancelled = true;
+        log('[suitecloud] Cancellation requested — sending SIGINT to suitecloud process...');
+        try { child.kill('SIGINT'); } catch {}
+      });
+    }
     child.on('close', (code) => {
       log(`[suitecloud] (custom cwd) Exit code: ${code}`);
       if (stdout.trim()) log(`[suitecloud][stdout]\n${stdout}`);
       if (stderr.trim()) log(`[suitecloud][stderr]\n${stderr}`);
+      if (cancelled) {
+        // Prefer VS Code CancellationError when available
+        const anyVscode: any = vscode as any;
+        if (anyVscode && anyVscode.CancellationError) {
+          return reject(new anyVscode.CancellationError());
+        }
+        return reject(new SuiteCloudError('Operation cancelled by user', { stdout, stderr, exitCode: code ?? -1 }));
+      }
       if (code !== 0) {
         reject(new SuiteCloudError(`suitecloud failed with code ${code}`, { stdout, stderr, exitCode: code ?? -1 }));
       }
@@ -108,27 +124,27 @@ export interface ImportFilesOptions {
   excludeProperties?: boolean;
 }
 
-export async function importFiles(remotePaths: string[], options?: ImportFilesOptions): Promise<SuiteCloudResult> {
-  return importFilesIn(findSdfRoot(), remotePaths, options);
+export async function importFiles(remotePaths: string[], options?: ImportFilesOptions, token?: vscode.CancellationToken): Promise<SuiteCloudResult> {
+  return importFilesIn(findSdfRoot(), remotePaths, options, token);
 }
 
-export async function importFilesIn(cwd: string, remotePaths: string[], options?: ImportFilesOptions): Promise<SuiteCloudResult> {
+export async function importFilesIn(cwd: string, remotePaths: string[], options?: ImportFilesOptions, token?: vscode.CancellationToken): Promise<SuiteCloudResult> {
   const args: string[] = ['file:import'];
   if (options?.excludeProperties) {
     args.push('--excludeproperties');
   }
   args.push('--paths', ...remotePaths);
-  return runSuiteCloudIn(cwd, args);
+  return runSuiteCloudIn(cwd, args, token);
 }
 
-export async function uploadFiles(remotePaths: string[]): Promise<SuiteCloudResult> {
-  return uploadFilesIn(findSdfRoot(), remotePaths);
+export async function uploadFiles(remotePaths: string[], token?: vscode.CancellationToken): Promise<SuiteCloudResult> {
+  return uploadFilesIn(findSdfRoot(), remotePaths, token);
 }
 
-export async function uploadFilesIn(cwd: string, remotePaths: string[]): Promise<SuiteCloudResult> {
+export async function uploadFilesIn(cwd: string, remotePaths: string[], token?: vscode.CancellationToken): Promise<SuiteCloudResult> {
   const args: string[] = ['file:upload'];
   args.push('--paths', ...remotePaths);
-  return runSuiteCloudIn(cwd, args);
+  return runSuiteCloudIn(cwd, args, token);
 }
 
 export function getRemotePathForLocal(localFilePath: string): string {
