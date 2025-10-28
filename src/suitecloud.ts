@@ -138,6 +138,32 @@ export async function getSuiteCloudVersion(): Promise<string> {
   return result.stdout.trim() || result.stderr.trim();
 }
 
+function cleanAnsi(text: string): string {
+  const ansiRegex = /\u001b\[[0-?]*[ -\/]*[@-~]/g; // ESC[ ... command
+  const bareCsiRegex = /(?:^|\s)\[(?:\d+;?)*[A-Za-z](?=\s|$)/g; // e.g. "[2K" or "[1G"
+  return text
+    .replace(ansiRegex, '')
+    .replace(bareCsiRegex, ' ')
+    .replace(/[\r\t]/g, '')
+    .trim();
+}
+
+export async function listFileCabinetPaths(folder: string = '/'): Promise<string[]> {
+  const result = await runSuiteCloud(['file:list', '--folder', folder]);
+  const text = cleanAnsi(`${result.stdout}\n${result.stderr}`);
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+  const paths: string[] = [];
+  for (const line of lines) {
+    // Heuristic: accept lines that look like absolute File Cabinet paths
+    if (line.startsWith('/')) {
+      const p = line.replace(/\\/g, '/').replace(/\s+$/g, '');
+      paths.push(p);
+    }
+  }
+  // Deduplicate
+  return Array.from(new Set(paths));
+}
+
 export interface ImportFilesOptions {
   excludeProperties?: boolean;
 }
@@ -153,6 +179,16 @@ export async function importFilesIn(cwd: string, remotePaths: string[], options?
   }
   args.push('--paths', ...remotePaths);
   return runSuiteCloudIn(cwd, args, token);
+}
+
+export async function importFolder(folderPath: string, options?: ImportFilesOptions, token?: vscode.CancellationToken): Promise<SuiteCloudResult> {
+  // Expand folder into file list to be robust across CLI versions
+  const all = await listFileCabinetPaths(folderPath);
+  const files = all.filter(p => /\/[^/]+\.[^/]+$/i.test(p));
+  if (files.length === 0) {
+    throw new SuiteCloudError(`No files found under folder: ${folderPath}`);
+  }
+  return importFiles(files, options, token);
 }
 
 export async function uploadFiles(remotePaths: string[], token?: vscode.CancellationToken): Promise<SuiteCloudResult> {
@@ -225,6 +261,12 @@ export function getRemotePathForLocal(localFilePath: string): string {
     const remote = `/SuiteScripts/${relative.split(path.sep).join('/')}`;
     log(`[mapping] Local -> Remote: ${localFilePath} -> ${remote}`);
     return remote;
+}
+
+export function getLocalPathForRemote(remotePath: string): string {
+  const root = findSdfRoot();
+  const normalized = remotePath.replace(/^\/+/, '');
+  return path.join(root, 'FileCabinet', normalized);
 }
 
 export interface AuthAccount {

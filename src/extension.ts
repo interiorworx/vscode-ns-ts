@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { compareCurrentFileWithAccount, changeAccount, uploadCurrentFile, compareAndUploadCurrentFile } from './commands';
+import { compareCurrentFileWithAccount, changeAccount, uploadCurrentFile, compareAndUploadCurrentFile, importFromAccount } from './commands';
 import { isProduction, listAuthAccounts, readProjectDefaultAuthId, findSdfRoot } from './suitecloud';
 
 let accountItem: vscode.StatusBarItem | undefined;
@@ -63,6 +63,14 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   context.subscriptions.push(compareUploadCmd);
+
+  const importCmd = vscode.commands.registerCommand('ns.importFromAccount', async () => {
+    await runCommand(async (progress, token) => {
+      await importFromAccount(progress, token);
+    }, 'Import failed');
+  });
+
+  context.subscriptions.push(importCmd);
 
   const changeAccountCmd = vscode.commands.registerCommand('ns.changeAccount', async () => {
     await runCommand(async (progress, token) => {
