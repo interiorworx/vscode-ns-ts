@@ -2,7 +2,7 @@
   "name": "vscode-ns-ts",
   "displayName": "VSCode NetSuite TypeScript Uploader",
   "description": "Upload TypeScript files to NetSuite",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "publisher": "interiorworx",
   "repository": {
     "type": "git",
